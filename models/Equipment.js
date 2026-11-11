@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const CATEGORIES = ['Tools', 'Furniture', 'Sound System', 'Tents & Canopies', 'Kitchenware', 'Sports', 'Others'];
+const CATEGORIES = ['Tools', 'Furniture', 'Sound System', 'Tents & Canopies', 'Kitchenware', 'Sports', 'Disaster & Rescue', 'Others'];
 const CONDITIONS = ['Good', 'Fair', 'Needs Repair'];
 
 const equipmentSchema = new mongoose.Schema(
