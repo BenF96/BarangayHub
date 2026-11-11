@@ -1,0 +1,309 @@
+<%- include('../partials/header') %>
+<%
+  const eq = item.equipment;
+  const isVoid = ['Cancelled', 'Rejected'].includes(item.status);
+  const bal = item.balance;
+  const next = item.nextAction;
+  const dates = item.stepDates;
+  const payClass = 'pay-' + item.paymentStatus.toLowerCase().replace(' ', '-');
+  const history = item.statusHistory.length ? item.statusHistory : [{ status: item.status, at: item.createdAt }];
+  const untilStart = Math.round((item.startDate - today) / 86400000);
+  const untilEnd = Math.round((item.endDate - today) / 86400000);
+  const payCount = item.payments.filter(p => p.type !== 'refund').length;
+  const refundCount = item.payments.filter(p => p.type === 'refund').length;
+  const lastPay = item.payments.filter(p => p.type !== 'refund').map(p => p.paidAt).sort((a, b) => b - a)[0];
+
+  // What each step means, shown under the step name
+  const stepInfo = {
+    Pending: 'Request recorded. Units are set aside for the dates.',
+    Approved: 'Booking confirmed. Rent is now owed.',
+    Released: 'Item handed to the borrower.',
+    Returned: 'Item back in barangay storage.',
+  };
+  // What each button does, shown under the button
+  const actionInfo = {
+    Approved: { label: 'Approve', what: 'Confirms the booking. The rent becomes owed and shows under Unpaid rent until paid.' },
+    Rejected: { label: 'Reject', what: 'Turns down the request. The units are freed and no rent is owed.' },
+    Cancelled: { label: 'Cancel', what: 'Calls off the booking. The units are freed and no rent is owed; any payment becomes a refund.' },
+    Released: { label: 'Release to borrower', what: 'Use when the borrower picks up the item. Item, units and dates are locked after this.' },
+    Returned: { label: 'Mark as returned', what: 'Use when the item is back. The units become free again.' },
+  };
+%>
+
+<div class="screen-only">
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/reservations">Reservations</a> / <%= item.refNo %></div>
+    <h1><%= item.borrowerName %></h1>
+    <p class="sub"><%= item.quantity %> × <%= eq ? eq.name : '(deleted item)' %> · <%= longDate(item.startDate) %> to <%= longDate(item.endDate) %> · <%- include('../partials/status', { s: item.status, r: item }) %> · <span class="pay <%= payClass %>"><%= item.paymentStatus %></span></p>
+  </div>
+  <div class="toolbar">
+    <button class="btn" type="button" data-print>Print slip</button>
+    <a class="btn" href="/reservations/<%= item._id %>/edit">Edit</a>
+    <% if (!item.payments.length) { %>
+      <form method="POST" action="/reservations/<%= item._id %>?_method=DELETE" data-confirm="Delete this reservation?">
+        <button class="btn btn-danger" type="submit">Delete</button>
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<p class="next-box <%= next.tone === 'bad' ? 'bad' : next.tone === 'warn' ? 'warn' : '' %>" style="margin-bottom:18px"><strong>Next:</strong> <%= next.text %></p>
+
+<div class="cards">
+  <!-- RESERVATION STEPS -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="route">Reservation</h2>
+      <%- include('../partials/status', { s: item.status, r: item }) %>
+      <p class="panel-desc">Where this booking is in the process. Each step shows the date it happened.</p>
+    </div>
+    <ol class="steps">
+      <% if (isVoid) { %>
+        <li class="done"><span class="mark">✓</span><span>Pending<span class="what"><%= stepInfo.Pending %></span></span><time><%= dates.Pending ? dateTime(dates.Pending) : '' %></time></li>
+        <% if (dates.Approved) { %><li class="done"><span class="mark">✓</span><span>Approved<span class="what"><%= stepInfo.Approved %></span></span><time><%= dateTime(dates.Approved) %></time></li><% } %>
+        <li class="now stop"><span class="mark">✕</span><span><%= item.status %><span class="what"><%= item.status === 'Rejected' ? 'Request turned down.' : 'Booking called off.' %> Units freed, no rent owed.</span></span><time><%= dates[item.status] ? dateTime(dates[item.status]) : '' %></time></li>
+      <% } else { const idx = FLOW.indexOf(item.status); FLOW.forEach((s, i) => { const cls = i < idx || item.status === 'Returned' ? 'done' : i === idx ? 'now' : ''; %>
+        <li class="<%= cls %><%= i === idx && item.status !== 'Returned' ? ' now' : '' %>">
+          <span class="mark"><%= cls === 'done' ? '✓' : i + 1 %></span>
+          <span><%= s %><span class="what"><%= stepInfo[s] %></span></span>
+          <time><%= dates[s] ? dateTime(dates[s]) : (s === 'Released' ? 'planned ' + fmtDate(item.startDate) : s === 'Returned' ? 'due ' + fmtDate(item.endDate) : '—') %></time>
+        </li>
+      <% }) } %>
+    </ol>
+    <div class="panel-foot">Reference no. <strong><%= item.refNo %></strong> · filed <%= dateTime(item.createdAt) %></div>
+  </section>
+
+  <!-- RENT -->
+  <section class="panel" id="payments">
+    <div class="panel-head">
+      <h2 data-icon="payments">Rent</h2>
+      <span class="pay <%= payClass %>"><%= item.paymentStatus %></span>
+      <p class="panel-desc">The rate is fixed from the day this was reserved. Payments and refunds update the balance.</p>
+    </div>
+    <table class="money">
+      <tbody>
+        <tr><td>Rate</td><td class="num"><%= item.lockedRate > 0 ? peso(item.lockedRate) + ' / unit / day' : 'Free' %></td></tr>
+        <% if (eq && eq.rentalFee !== item.lockedRate) { %><tr class="hint-row"><td colspan="2">Item's rate today is <%= peso(eq.rentalFee) %>; this booking keeps its original rate.</td></tr><% } %>
+        <tr><td>Units × days</td><td class="num"><%= item.quantity %> × <%= item.days %></td></tr>
+        <tr><td>Rent</td><td class="num"><%= peso(item.totalFee) %></td></tr>
+        <% if (isVoid) { %><tr><td>Rent owed</td><td class="num">₱0.00 <span class="small muted">(<%= item.status.toLowerCase() %>)</span></td></tr><% } %>
+        <% if (item.status === 'Pending' && item.totalFee) { %><tr class="hint-row"><td colspan="2">Not owed yet. It becomes owed once approved.</td></tr><% } %>
+        <tr><td>Paid <span class="small muted">(<%= payCount %> payment<%= payCount === 1 ? '' : 's' %>)</span></td><td class="num"><%= peso(item.amountPaid) %></td></tr>
+        <% if (refundCount) { %><tr><td>Refunded</td><td class="num">−<%= peso(item.amountRefunded) %></td></tr><% } %>
+        <tr class="sum"><td><%= bal < 0 ? 'To refund' : 'Balance' %></td><td class="num <%= bal > 0 || bal < 0 ? 'red' : '' %>"><%= peso(Math.abs(bal)) %></td></tr>
+        <% if (lastPay) { %><tr class="hint-row"><td colspan="2">Last payment <%= fmtDate(lastPay) %></td></tr><% } %>
+      </tbody>
+    </table>
+
+    <% if (item.payments.length) { %>
+      <ul class="log" style="border-top:1px solid var(--line-2)">
+        <% item.payments.slice().reverse().forEach(p => { const refund = p.type === 'refund'; %>
+          <li>
+            <strong class="<%= refund ? 'red' : '' %>"><%= refund ? 'Refund −' : '' %><%= peso(p.amount) %></strong><%= p.orNumber ? ' · OR ' + p.orNumber : '' %><%= p.receivedBy ? ' · ' + p.receivedBy : '' %>
+            <% if (p.note) { %><span class="muted"> — <%= p.note %></span><% } %>
+            <time>
+              <%= fmtDate(p.paidAt) %><%= p.recordedBy ? ' · entered by ' + p.recordedBy : '' %>
+              <form method="POST" action="/reservations/<%= item._id %>/payments/<%= p._id %>?_method=DELETE" style="display:inline" data-confirm="Remove this entry? It will be noted in the history.">
+                · <button class="linkbtn red small" type="submit">remove</button>
+              </form>
+            </time>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+
+    <% if (bal > 0 || item.refundDue > 0) { const refund = item.refundDue > 0; %>
+      <form class="status-form" method="POST" action="/reservations/<%= item._id %>/payments" style="border-top:1px solid var(--line-2)">
+        <input type="hidden" name="type" value="<%= refund ? 'refund' : 'payment' %>" />
+        <p class="small strong" style="margin-bottom:8px"><%= refund ? 'Record refund' : 'Record payment' %></p>
+        <div class="grid2" style="grid-template-columns:1fr 1fr">
+          <label>Amount (₱)
+            <input type="number" name="amount" min="0.01" step="0.01" max="<%= refund ? item.refundDue : bal %>" required value="<%= refund ? item.refundDue : bal %>" />
+          </label>
+          <label>Date
+            <input type="date" name="paidAt" required max="<%= fmtDate(today) %>" value="<%= fmtDate(today) %>" />
+          </label>
+          <% if (!refund) { %>
+            <label>OR no.
+              <input type="text" name="orNumber" placeholder="Official receipt number" />
+            </label>
+          <% } %>
+          <label><%= refund ? 'Given by' : 'Received by' %>
+            <input type="text" name="receivedBy" placeholder="Staff member's name" />
+          </label>
+        </div>
+        <label>Note
+          <input type="text" name="note" placeholder="<%= refund ? 'Reason' : 'Cash, e-wallet reference…' %>" />
+        </label>
+        <% if (!refund && item.status === 'Pending') { %><p class="small muted" style="margin-top:-6px">Paying before approval is allowed; it is refunded if the request is rejected.</p><% } %>
+        <button class="btn btn-primary btn-sm" type="submit"><%= refund ? 'Record refund' : 'Record payment' %></button>
+      </form>
+    <% } else if (item.totalFee === 0 && !item.payments.length) { %>
+      <div class="panel-foot">Free item. No rent to collect.</div>
+    <% } %>
+  </section>
+
+  <!-- NEXT STEP -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="play_circle" data-tone="warn">Next step</h2>
+      <span class="small muted">now: <%= item.status %></span>
+      <p class="panel-desc">The actions allowed at this stage. Status only moves forward.</p>
+    </div>
+    <% if (!item.nextStatuses.length) { %>
+      <p class="empty">No more steps. This reservation is <%= item.status.toLowerCase() %>.<% if (item.refundDue > 0) { %> Record the refund in the Rent card.<% } else if (bal > 0) { %> Collect the unpaid rent in the Rent card.<% } %></p>
+    <% } else { item.nextStatuses.forEach(s => {
+         const warn = s === 'Released' && bal > 0
+           ? `Rent is not fully paid (${peso(bal)} balance). Release anyway?`
+           : ['Rejected', 'Cancelled'].includes(s) && item.netPaid > 0
+             ? `${peso(item.netPaid)} has been paid. It will need to be refunded. Continue?` : ''; %>
+      <form class="status-form" method="POST" action="/reservations/<%= item._id %>/status?_method=PATCH" <% if (warn) { %>data-confirm="<%= warn %>"<% } %>>
+        <input type="hidden" name="status" value="<%= s %>" />
+        <div class="inline">
+          <input type="text" name="note" placeholder="Note (optional)" />
+          <button class="btn <%= ['Rejected', 'Cancelled'].includes(s) ? 'btn-danger' : 'btn-primary' %> btn-sm" type="submit"><%= actionInfo[s].label %></button>
+        </div>
+        <span class="btn-explain"><%= actionInfo[s].what %></span>
+        <% if (s === 'Released' && bal > 0) { %><span class="btn-explain amber">Rent not fully paid: <%= peso(bal) %> left. You can still release; it will be noted.</span><% } %>
+        <% if (s === 'Released' && untilStart > 0) { %><span class="btn-explain">Pick-up date is <%= longDate(item.startDate) %>.</span><% } %>
+      </form>
+    <% }) } %>
+  </section>
+
+  <!-- BORROWER -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="person" data-tone="info">Borrower</h2>
+      <p class="panel-desc">Who is borrowing, and their record with the barangay (matched by name and contact number).</p>
+    </div>
+    <div class="panel-body">
+      <dl class="kv">
+        <dt>Name</dt><dd><%= item.borrowerName %></dd>
+        <dt>Contact no.</dt><dd><a href="tel:<%= item.contactNumber.replace(/\s+/g, '') %>"><%= item.contactNumber %></a></dd>
+        <dt>Purok / address</dt><dd><%= item.address %></dd>
+        <dt>Purpose</dt><dd><%= item.purpose || '—' %></dd>
+        <dt>Reservations</dt><dd><%= borrower.total %> in all<%= borrower.active ? ', ' + borrower.active + ' other active' : '' %><%= borrower.returned ? ', ' + borrower.returned + ' returned' : '' %></dd>
+        <dt>Unpaid elsewhere</dt><dd class="<%= borrower.unpaidElsewhere > 0 ? 'red strong' : '' %>"><%= borrower.unpaidElsewhere > 0 ? peso(borrower.unpaidElsewhere) : 'None' %></dd>
+        <% if (borrower.lateBefore) { %><dt>Overdue now</dt><dd class="red strong"><%= borrower.lateBefore %> other item(s) not returned on time</dd><% } %>
+      </dl>
+    </div>
+    <% if (borrower.others.length) { %>
+      <ul class="log" style="border-top:1px solid var(--line-2)">
+        <% borrower.others.slice(0, 4).forEach(o => { %>
+          <li><a href="/reservations/<%= o._id %>"><%= o.refNo %></a> · <%= o.quantity %> × <%= o.equipment ? o.equipment.name : '(deleted)' %> · <%- include('../partials/status', { s: o.status, r: o }) %>
+            <time><%= fmtDate(o.startDate) %> – <%= fmtDate(o.endDate) %><%= o.balance > 0 ? ' · ' + peso(o.balance) + ' unpaid' : '' %></time></li>
+        <% }) %>
+      </ul>
+      <% if (borrower.others.length > 4) { %><div class="panel-foot"><a href="/reservations?q=<%= encodeURIComponent(item.borrowerName) %>">See all <%= borrower.others.length %> other reservations</a></div><% } %>
+    <% } %>
+  </section>
+
+  <!-- ITEM -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="inventory_2" data-tone="purple">Item</h2>
+      <p class="panel-desc">What is being borrowed and how much stock is left for these dates.</p>
+    </div>
+    <% if (!eq) { %>
+      <p class="empty">This item has been deleted from the inventory.</p>
+    <% } else { %>
+      <div class="panel-body">
+        <dl class="kv">
+          <dt>Item</dt><dd><a href="/equipment/<%= eq._id %>"><%= eq.name %></a></dd>
+          <dt>Category</dt><dd><%= eq.category %></dd>
+          <dt>Condition</dt><dd class="cond-<%= eq.condition.toLowerCase().replace(' ', '-') %>"><%= eq.condition %></dd>
+          <dt>Units owned</dt><dd><%= stock.owned %></dd>
+          <dt>This booking</dt><dd><%= item.quantity %> unit<%= item.quantity > 1 ? 's' : '' %></dd>
+          <dt>Others, same dates</dt><dd><%= stock.otherBooked %> unit<%= stock.otherBooked === 1 ? '' : 's' %> booked</dd>
+          <dt>Still free</dt><dd class="<%= stock.freeAfterThis <= 0 ? 'red strong' : '' %>"><%= Math.max(0, stock.freeAfterThis) %> unit<%= stock.freeAfterThis === 1 ? '' : 's' %> on those dates</dd>
+          <dt>Rate today</dt><dd><%= eq.rentalFee > 0 ? peso(eq.rentalFee) + ' / unit / day' : 'Free' %></dd>
+        </dl>
+      </div>
+      <% if (eq.condition === 'Needs Repair') { %><div class="panel-foot red">Marked as needing repair. Check it before release.</div><% } %>
+      <% if (eq.description) { %><div class="panel-foot"><%= eq.description %></div><% } %>
+    <% } %>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="event">Schedule</h2>
+      <p class="panel-desc">Booked dates and how far away they are.</p>
+    </div>
+    <div class="panel-body">
+      <dl class="kv">
+        <dt>Pick-up</dt><dd><%= longDate(item.startDate) %></dd>
+        <dt>Return</dt><dd><%= longDate(item.endDate) %></dd>
+        <dt>Length</dt><dd><%= item.days %> day<%= item.days > 1 ? 's' : '' %></dd>
+        <% if (['Pending', 'Approved'].includes(item.status)) { %>
+          <dt>Pick-up in</dt><dd class="<%= untilStart < 0 ? 'red strong' : '' %>"><%= untilStart > 0 ? untilStart + ' day' + (untilStart > 1 ? 's' : '') : untilStart === 0 ? 'Today' : 'Passed ' + (-untilStart) + ' day(s) ago, not yet released' %></dd>
+        <% } else if (item.status === 'Released') { %>
+          <dt>Return in</dt><dd class="<%= untilEnd < 0 ? 'red strong' : '' %>"><%= untilEnd > 0 ? untilEnd + ' day' + (untilEnd > 1 ? 's' : '') : untilEnd === 0 ? 'Today' : (-untilEnd) + ' day(s) overdue' %></dd>
+        <% } else if (item.status === 'Returned' && dates.Returned) { %>
+          <dt>Returned on</dt><dd><%= dateTime(dates.Returned) %><% const late = Math.round((new Date(new Date(dates.Returned).toLocaleDateString('en-CA')) - item.endDate) / 86400000); if (late > 0) { %> <span class="late"><%= late %>d late</span><% } %></dd>
+        <% } %>
+        <dt>Remarks</dt><dd><%= item.remarks || '—' %></dd>
+        <dt>Last updated</dt><dd><%= dateTime(item.updatedAt) %></dd>
+      </dl>
+    </div>
+  </section>
+</div>
+
+<!-- HISTORY -->
+<section class="panel">
+  <div class="panel-head">
+    <h2 data-icon="history" data-tone="info">History</h2>
+    <p class="panel-desc">Every status change, edit, payment and refund on this reservation, newest first.</p>
+  </div>
+  <ul class="log">
+    <% history.slice().reverse().forEach(h => { %>
+      <li>
+        <%- include('../partials/status', { s: h.status }) %><% if (h.note) { %> <span class="muted">— <%= h.note %></span><% } %>
+        <time><%= dateTime(h.at) %><%= h.by ? ' · by ' + h.by : '' %></time>
+      </li>
+    <% }) %>
+  </ul>
+</section>
+</div>
+
+<!-- PRINTED SLIP (only when printing) -->
+<div class="slip print-only">
+  <div class="slip-head">
+    <div class="slip-org">
+      <img src="/img/logo.svg" alt="" />
+      <div><strong>Barangay Rent and Reservation Slip</strong><span>BarangayHub · Barangay Rent and Reservation Management System</span></div>
+    </div>
+    <div class="slip-ref"><span class="muted">Ref. no.</span><b><%= item.refNo %></b><span class="muted">Filed <%= fmtDate(item.createdAt) %></span></div>
+  </div>
+  <table class="lines">
+    <tbody>
+      <tr><td>Borrower</td><td><strong><%= item.borrowerName %></strong></td></tr>
+      <tr><td>Purok / address</td><td><%= item.address %></td></tr>
+      <tr><td>Contact no.</td><td><%= item.contactNumber %></td></tr>
+      <tr><td>Purpose</td><td><%= item.purpose || '—' %></td></tr>
+      <tr><td>Item</td><td><%= eq ? eq.name + ' (' + eq.category + ')' : '(item deleted)' %></td></tr>
+      <tr><td>Units</td><td><%= item.quantity %></td></tr>
+      <tr><td>Pick-up</td><td><%= longDate(item.startDate) %></td></tr>
+      <tr><td>Return</td><td><%= longDate(item.endDate) %> (<%= item.days %> day<%= item.days > 1 ? 's' : '' %>)</td></tr>
+      <tr><td>Status</td><td><%= item.status %></td></tr>
+      <tr><td>Remarks</td><td><%= item.remarks || '—' %></td></tr>
+    </tbody>
+  </table>
+  <table class="lines totals" style="margin-top:14px; max-width:380px; margin-left:auto">
+    <tbody>
+      <tr><td>Rate</td><td class="num"><%= item.lockedRate > 0 ? peso(item.lockedRate) + ' / unit / day' : 'free' %></td></tr>
+      <tr><td>Rent</td><td class="num"><%= item.quantity %> × <%= item.days %> = <%= peso(item.totalFee) %></td></tr>
+      <% if (isVoid) { %><tr><td>Rent owed</td><td class="num">None (<%= item.status.toLowerCase() %>)</td></tr><% } %>
+      <tr><td>Paid</td><td class="num"><%= peso(item.amountPaid) %></td></tr>
+      <% if (item.amountRefunded) { %><tr><td>Refunded</td><td class="num">−<%= peso(item.amountRefunded) %></td></tr><% } %>
+      <tr><td><%= bal < 0 ? 'To refund' : 'Balance' %></td><td class="num"><%= peso(Math.abs(bal)) %></td></tr>
+    </tbody>
+  </table>
+  <div class="signatures">
+    <div>Borrower</div>
+    <div>Released by</div>
+    <div>Received back by / date</div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

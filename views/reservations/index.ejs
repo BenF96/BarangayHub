@@ -1,0 +1,118 @@
+<%- include('../partials/header') %>
+<%
+  const views = {
+    '': ['Reservations', 'Every booking, newest pick-up date first. Use the filters to narrow down.'],
+    Pending: ['For approval', 'Requests waiting for a decision. Their units are already set aside; rent is expected but not owed until approved.'],
+    Approved: ['Approved', 'Confirmed bookings waiting for pick-up. Rent is owed; collect it before or at release.'],
+    Released: ['Out on loan', 'Items currently with borrowers. Mark them returned when they come back.'],
+    Overdue: ['Overdue', 'Items still out after their return date. Follow up with these borrowers.'],
+    Returned: ['Returned', 'Completed loans. Any with a balance still owe rent.'],
+    Cancelled: ['Cancelled', 'Bookings called off. No rent owed; anything paid must be refunded.'],
+    Rejected: ['Rejected', 'Requests turned down. No rent owed; anything paid must be refunded.'],
+  };
+  const [heading, desc] = views[status] || views[''];
+  const owed = items.reduce((s, r) => s + Math.max(0, r.balance), 0);
+%>
+<div class="page-head">
+  <div>
+    <% if (status) { %><div class="crumbs"><a href="/reservations">Reservations</a></div><% } %>
+    <h1><%= heading %></h1>
+    <p class="sub"><%= desc %></p>
+  </div>
+  <a class="btn btn-primary" href="/reservations/new"><%- include('../partials/icon', { name: 'add' }) %> New reservation</a>
+</div>
+
+<%
+  const byStat = {};
+  items.forEach(r => { byStat[r.status] = (byStat[r.status] || 0) + 1; });
+  const statLine = Object.entries(byStat).map(([k, v]) => v + ' ' + k.toLowerCase()).join(' · ') || 'none';
+  const borrowers = new Set(items.map(r => r.borrowerName.toLowerCase() + '|' + r.contactNumber)).size;
+  const unpaidCount = items.filter(r => r.balance > 0).length;
+  const days = items.reduce((s, r) => s + r.quantity * r.days, 0);
+%>
+<div class="summary">
+  <div data-icon="event_note">
+    <span class="n"><%= totals.count %></span>
+    <span class="l">Reservations listed</span>
+    <span class="d"><%= statLine %></span>
+  </div>
+  <div data-icon="groups" data-tone="info">
+    <span class="n"><%= borrowers %></span>
+    <span class="l">Borrowers</span>
+    <span class="d"><%= totals.units %> units · <%= days %> unit-days booked</span>
+  </div>
+  <div data-icon="receipt_long">
+    <span class="n"><%= peso(totals.fees) %></span>
+    <span class="l">Rent<%= status === 'Pending' ? ' expected' : ' owed' %></span>
+    <span class="d"><%= status === 'Pending' ? 'Owed once approved' : 'Cancelled and rejected count as ₱0' %></span>
+  </div>
+  <div data-icon="savings" data-tone="purple">
+    <span class="n"><%= peso(totals.paid) %></span>
+    <span class="l">Paid so far</span>
+    <span class="d"><%= totals.fees ? Math.round(totals.paid / totals.fees * 100) : 0 %>% of the rent, net of refunds</span>
+  </div>
+  <div class="<%= owed ? 'red' : '' %>" data-icon="request_quote" data-tone="<%= owed ? 'bad' : '' %>">
+    <span class="n"><%= peso(owed) %></span>
+    <span class="l">Still unpaid</span>
+    <span class="d"><%= unpaidCount %> reservation<%= unpaidCount === 1 ? '' : 's' %> with a balance</span>
+  </div>
+</div>
+
+<form class="filters" method="GET" action="/reservations">
+  <label>Search<input type="search" name="q" placeholder="Borrower name" value="<%= q %>" /></label>
+  <label>Status
+    <select name="status">
+      <option value="">Any status</option>
+      <% STATUSES.concat('Overdue').forEach(s => { %>
+        <option value="<%= s %>" <%= s === status ? 'selected' : '' %>><%= s %></option>
+      <% }) %>
+    </select>
+  </label>
+  <button class="btn btn-primary" type="submit"><%- include('../partials/icon', { name: 'search' }) %> Search</button>
+  <% if (q || status) { %><a class="btn" href="/reservations">Clear</a><% } %>
+</form>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 data-icon="list_alt">List</h2>
+    <p class="panel-desc">Rent shows what is owed, what was paid and what is left. "Next" says what to do with each booking.</p>
+  </div>
+  <% if (items.length === 0) { %>
+    <p class="empty">No reservations match.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Ref.</th><th>Borrower</th><th>Item</th><th>Dates</th><th>Status</th><th>Rent</th><th>Next</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% items.forEach(r => { const n = r.nextAction; %>
+            <tr>
+              <td class="nowrap"><a href="/reservations/<%= r._id %>"><%= r.refNo %></a><br /><span class="small muted">filed <%= fmtDate(r.createdAt) %></span></td>
+              <td><a href="/reservations/<%= r._id %>"><%= r.borrowerName %></a><br /><span class="small muted"><%= r.address %> · <%= r.contactNumber %></span><% if (r.purpose) { %><br /><span class="small muted"><%= r.purpose %></span><% } %></td>
+              <td><%= r.quantity %> × <% if (r.equipment) { %><a href="/equipment/<%= r.equipment._id %>"><%= r.equipment.name %></a><% } else { %><span class="muted">(deleted)</span><% } %></td>
+              <td class="nowrap"><%= fmtDate(r.startDate) %> – <%= fmtDate(r.endDate) %><br /><span class="small muted"><%= r.days %> day<%= r.days > 1 ? 's' : '' %></span></td>
+              <td><%- include('../partials/status', { s: r.status, r }) %></td>
+              <td class="nowrap small">
+                <% if (r.totalFee === 0 && !r.payments.length) { %><span class="pay pay-free">free</span><% } else { %>
+                  <%= peso(r.rentDue) %> owed<br />
+                  <span class="muted"><%= peso(r.netPaid) %> paid</span><br />
+                  <span class="pay pay-<%= r.paymentStatus.toLowerCase().replace(' ', '-') %>"><%= r.balance > 0 ? peso(r.balance) + ' left' : r.balance < 0 ? peso(-r.balance) + ' to refund' : r.paymentStatus.toLowerCase() %></span>
+                <% } %>
+              </td>
+              <td class="small <%= n.tone === 'bad' ? 'red' : n.tone === 'warn' ? 'amber' : 'muted' %>" style="min-width:150px"><%= n.text %></td>
+              <td class="row-actions">
+                <a href="/reservations/<%= r._id %>">Open</a>
+                <a href="/reservations/<%= r._id %>/edit">Edit</a>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+        <tfoot>
+          <tr><td colspan="5">Total (<%= totals.count %>)</td><td class="small nowrap"><%= peso(totals.fees) %> owed<br /><%= peso(totals.paid) %> paid</td><td colspan="2"></td></tr>
+        </tfoot>
+      </table>
+    </div>
+  <% } %>
+</section>
+<%- include('../partials/footer') %>

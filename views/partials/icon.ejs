@@ -1,0 +1,8 @@
+<%
+  // Short names used around the app → Material Symbols icon names. Any other Material icon name also works.
+  const map = {
+    dashboard: 'dashboard', box: 'inventory_2', plus: 'add', calendar: 'event', clock: 'pending_actions',
+    check: 'task_alt', truck: 'local_shipping', alert: 'warning', list: 'list_alt', peso: 'payments',
+    users: 'group', edit: 'edit', trash: 'delete', back: 'arrow_back', tools: 'construction', wrench: 'build',
+  };
+%><span class="icon material-symbols-outlined" aria-hidden="true"><%= map[name] || name %></span>

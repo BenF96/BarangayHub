@@ -1,0 +1,105 @@
+<%- include('../partials/header') %>
+<% const usedUnits = items.reduce((s, e) => s + Math.min(e.quantity, reserved[String(e._id)] || 0), 0); %>
+<div class="page-head">
+  <div>
+    <h1>Equipment &amp; tools</h1>
+    <p class="sub">The barangay's lending inventory: stock free today, what's out with borrowers, upcoming bookings and rent still owed per item.</p>
+  </div>
+  <a class="btn btn-primary" href="/equipment/new"><%- include('../partials/icon', { name: 'add' }) %> Add item</a>
+</div>
+
+<div class="summary">
+  <div data-icon="inventory_2">
+    <span class="n"><%= items.length %></span>
+    <span class="l">Item types</span>
+    <span class="d"><%= totals.units %> units owned in all<%= totals.repair ? ' · ' + totals.repair + ' need repair' : '' %></span>
+  </div>
+  <div data-icon="check_circle">
+    <span class="n"><%= totals.units - usedUnits %></span>
+    <span class="l">Units free today</span>
+    <span class="d"><%= usedUnits %> booked or out today</span>
+  </div>
+  <a href="/reservations?status=Released" data-icon="local_shipping" data-tone="purple">
+    <span class="n"><%= totals.outNow %></span>
+    <span class="l">Units out on loan</span>
+    <span class="d">With borrowers right now</span>
+  </a>
+  <a href="/reservations" data-icon="event_upcoming" data-tone="info">
+    <span class="n"><%= totals.upcoming %></span>
+    <span class="l">Upcoming bookings</span>
+    <span class="d">Pending or approved, pick-up after today</span>
+  </a>
+  <a href="/payments#owing" data-icon="request_quote" data-tone="<%= totals.unpaid ? 'bad' : '' %>" class="<%= totals.unpaid ? 'red' : '' %>">
+    <span class="n"><%= peso(totals.unpaid) %></span>
+    <span class="l">Unpaid rent</span>
+    <span class="d">On these items, approved and later</span>
+  </a>
+</div>
+
+<form class="filters" method="GET" action="/equipment">
+  <label>Search<input type="search" name="q" placeholder="Item name" value="<%= q %>" /></label>
+  <label>Category
+    <select name="category">
+      <option value="">All categories</option>
+      <% CATEGORIES.forEach(c => { %>
+        <option value="<%= c %>" <%= c === category ? 'selected' : '' %>><%= c %></option>
+      <% }) %>
+    </select>
+  </label>
+  <button class="btn btn-primary" type="submit"><%- include('../partials/icon', { name: 'search' }) %> Search</button>
+  <% if (q || category) { %><a class="btn" href="/equipment">Clear</a><% } %>
+</form>
+
+<div class="panel">
+  <div class="panel-head">
+    <h2 data-icon="inventory_2">Inventory</h2>
+    <span class="small muted"><%= items.length %> item<%= items.length === 1 ? '' : 's' %></span>
+    <p class="panel-desc">"Free today" counts units not booked or out today. "Out / upcoming" shows units with borrowers now and bookings still to be picked up. The rate is per unit per day; existing bookings keep the rate they were made with.</p>
+  </div>
+  <% if (items.length === 0) { %>
+    <p class="empty"><%= q || category ? 'No items match the search.' : 'No items yet.' %> <a href="/equipment/new">Add an item</a> to start taking reservations.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>Category</th><th>Free today</th><th>Out / upcoming</th><th class="num">Rate / day</th><th class="num">Unpaid rent</th><th>Condition</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% items.forEach(e => {
+               const x = extra[String(e._id)] || { outNow: 0, upcoming: 0, upcomingUnits: 0, overdue: 0, unpaid: 0, nextDate: null };
+               const used = Math.min(e.quantity, reserved[String(e._id)] || 0);
+               const avail = e.quantity - used;
+               const pct = e.quantity ? Math.round(avail / e.quantity * 100) : 0; %>
+            <tr>
+              <td><a href="/equipment/<%= e._id %>"><strong><%= e.name %></strong></a>
+                <% if (e.description) { %><br /><span class="small muted"><%= e.description %></span><% } %></td>
+              <td><%= e.category %></td>
+              <td style="min-width:150px">
+                <span class="<%= avail ? '' : 'red strong' %>"><%= avail %></span> <span class="muted">of <%= e.quantity %></span>
+                <div class="meter <%= avail === 0 ? 'out' : pct <= 30 ? 'low' : '' %>"><i style="width: <%= pct %>%"></i></div>
+              </td>
+              <td class="small">
+                <%= x.outNow %> out<% if (x.overdue) { %> <span class="late"><%= x.overdue %> late</span><% } %><br />
+                <span class="muted"><%= x.upcoming %> booking<%= x.upcoming === 1 ? '' : 's' %><%= x.upcoming ? ' (' + x.upcomingUnits + ' units), next ' + fmtDate(x.nextDate) : '' %></span>
+              </td>
+              <td class="num"><%= e.rentalFee > 0 ? peso(e.rentalFee) : 'free' %></td>
+              <td class="num <%= x.unpaid ? 'red' : 'muted' %>"><%= x.unpaid ? peso(x.unpaid) : '—' %></td>
+              <td class="cond-<%= e.condition.toLowerCase().replace(' ', '-') %>"><%= e.condition %></td>
+              <td class="row-actions">
+                <a href="/reservations/new?equipment=<%= e._id %>">Reserve</a>
+                <a href="/equipment/<%= e._id %>/edit">Edit</a>
+                <form method="POST" action="/equipment/<%= e._id %>?_method=DELETE" data-confirm="Delete this item?">
+                  <button class="linkbtn red" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+        <tfoot>
+          <tr><td colspan="2">All items</td><td><%= totals.units - usedUnits %> of <%= totals.units %></td><td class="small"><%= totals.outNow %> out · <%= totals.upcoming %> upcoming</td><td></td><td class="num"><%= peso(totals.unpaid) %></td><td colspan="2"></td></tr>
+        </tfoot>
+      </table>
+    </div>
+  <% } %>
+</div>
+<%- include('../partials/footer') %>

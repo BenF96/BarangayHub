@@ -1,0 +1,26 @@
+{
+  "name": "barangayhub",
+  "version": "1.0.0",
+  "description": "BarangayHub: Barangay Rent and Reservation Management System for equipment and tools",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@fontsource/roboto": "^5.3.0",
+    "compression": "^1.8.2",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "helmet": "^8.3.0",
+    "material-symbols": "^0.27.2",
+    "method-override": "^3.0.0",
+    "mongoose": "^8.9.0",
+    "morgan": "^1.12.1"
+  }
+}

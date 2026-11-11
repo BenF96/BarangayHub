@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="BarangayHub logo">
+  <!-- Outer seal -->
+  <circle cx="64" cy="64" r="62" fill="#f5b301"/>
+  <circle cx="64" cy="64" r="55" fill="#14532d"/>
+  <circle cx="64" cy="64" r="51" fill="none" stroke="#f5b301" stroke-width="1.5" stroke-dasharray="3 4"/>
+  <!-- Sun rays -->
+  <g fill="#f5b301" opacity=".9">
+    <path d="M64 18 l3 9 h-6z"/><path d="M41 25 l7 6 -5 3z"/><path d="M87 25 l-7 6 5 3z"/>
+  </g>
+  <!-- Barangay hall -->
+  <path d="M30 60 L64 36 L98 60 Z" fill="#ffffff"/>
+  <rect x="36" y="60" width="56" height="5" fill="#f5b301"/>
+  <rect x="40" y="65" width="48" height="28" fill="#ffffff"/>
+  <rect x="44" y="69" width="6" height="20" fill="#14532d"/>
+  <rect x="78" y="69" width="6" height="20" fill="#14532d"/>
+  <rect x="57" y="72" width="14" height="21" rx="7" ry="7" fill="#14532d"/>
+  <rect x="34" y="93" width="60" height="5" fill="#f5b301"/>
+  <!-- Crossed wrench & hammer (tools) -->
+  <g transform="translate(64 104)">
+    <rect x="-16" y="-2" width="32" height="4" rx="2" fill="#ffffff" transform="rotate(25)"/>
+    <rect x="-16" y="-2" width="32" height="4" rx="2" fill="#ffffff" transform="rotate(-25)"/>
+  </g>
+</svg>

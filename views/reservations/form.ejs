@@ -1,0 +1,113 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/reservations">Reservations</a><%= item.isNew ? '' : ' / ' + item.refNo %></div>
+    <h1><%= item.isNew ? 'New reservation' : 'Edit ' + item.refNo %></h1>
+    <p class="sub"><%= item.isNew ? "Record a resident's request. It is saved as Pending and the units are set aside right away; approve it from the reservation page." : 'Correct the details of this reservation. Status changes are done with the buttons on the reservation page.' %></p>
+  </div>
+</div>
+
+<% if (equipmentList.length === 0) { %>
+  <div class="panel form"><p class="empty">There are no items yet. <a href="/equipment/new">Add an item</a> first, then come back to reserve it.</p></div>
+<% } else { %>
+<div class="form-layout">
+  <form id="reservation-form" class="panel form" method="POST" action="<%= item.isNew ? '/reservations' : '/reservations/' + item._id + '?_method=PUT' %>" data-exclude="<%= item.isNew ? '' : item._id %>">
+    <div class="panel-head">
+      <h2 data-icon="<%= item.isNew ? 'edit_calendar' : 'edit' %>"><%= item.isNew ? 'Reservation details' : 'Edit details' %></h2>
+      <p class="panel-desc">Who is borrowing, what, and for which dates. Stock is checked live in the Availability card and again when you save.</p>
+    </div>
+    <div class="panel-body">
+      <% if (error) { %><div class="notice notice-error"><%= error %></div><% } %>
+      <% if (locked) { %>
+        <div class="notice notice-warn">This reservation is <%= item.status.toLowerCase() %>, so the item, units and dates can't be changed. You can still correct the borrower's details and remarks.</div>
+      <% } %>
+
+      <div class="form-section">Borrower</div>
+      <label>Full name
+        <input type="text" name="borrowerName" required value="<%= item.borrowerName || '' %>" placeholder="Borrower's full name" autocomplete="off" />
+      </label>
+      <div class="grid2">
+        <label>Contact number
+          <input type="tel" name="contactNumber" required value="<%= item.contactNumber || '' %>" placeholder="Mobile or landline" autocomplete="off" />
+        </label>
+        <label>Purok / address
+          <input type="text" name="address" required value="<%= item.address || '' %>" placeholder="Purok, street or sitio" autocomplete="off" />
+        </label>
+      </div>
+      <label>Purpose
+        <input type="text" name="purpose" value="<%= item.purpose || '' %>" placeholder="What the items will be used for" />
+      </label>
+
+      <div class="form-section">What and when</div>
+      <div class="grid2">
+        <label>Item
+          <select name="equipment" required <%= locked ? 'disabled' : '' %>>
+            <option value="">Choose an item…</option>
+            <% equipmentList.forEach(e => { %>
+              <option value="<%= e._id %>" data-fee="<%= item.isNew || String(item.equipment) !== String(e._id) ? e.rentalFee : item.lockedRate %>" data-qty="<%= e.quantity %>" <%= String(item.equipment) === String(e._id) ? 'selected' : '' %>><%= e.name %><%= e.condition === 'Needs Repair' ? ' (needs repair)' : '' %></option>
+            <% }) %>
+          </select>
+          <span class="hint" id="stock-hint"></span>
+        </label>
+        <label>Units
+          <input type="number" name="quantity" min="1" required value="<%= item.quantity || 1 %>" <%= locked ? 'disabled' : '' %> />
+        </label>
+        <label>Pick-up date
+          <input type="date" name="startDate" required value="<%= fmtDate(item.startDate) %>" <%= locked ? 'disabled' : '' %> />
+        </label>
+        <label>Return date
+          <input type="date" name="endDate" required value="<%= fmtDate(item.endDate) %>" <%= locked ? 'disabled' : '' %> />
+        </label>
+      </div>
+      <label>Remarks
+        <input type="text" name="remarks" value="<%= item.remarks || '' %>" placeholder="Anything staff should know (ID shown, deposit, etc.)" />
+      </label>
+    </div>
+    <div class="form-foot">
+      <button class="btn btn-primary" type="submit"><%- include('../partials/icon', { name: 'save' }) %> <%= item.isNew ? 'Save as pending' : 'Save changes' %></button>
+      <a href="<%= item.isNew ? '/reservations' : '/reservations/' + item._id %>">Cancel</a>
+    </div>
+  </form>
+
+  <div>
+    <section class="panel" id="avail-card">
+      <div class="panel-head">
+        <h2 data-icon="event_available" data-tone="info">Availability</h2>
+        <p class="panel-desc">Units of the chosen item free on every day of the chosen dates, after other open bookings and overdue items not yet returned<%= item.isNew ? '' : ' (this one not counted)' %>.</p>
+      </div>
+      <div id="avail-body"><p class="empty">Choose an item and both dates.</p></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 data-icon="payments">Rent estimate</h2>
+        <p class="panel-desc"><%= item.isNew ? "Uses the item's current rate. The rate is fixed on this booking once saved." : 'This booking keeps its rate of ' + peso(item.lockedRate) + ' per unit per day, even if the item\'s rate changed.' %></p>
+      </div>
+      <table class="money">
+        <tbody>
+          <tr><td>Rate per unit per day</td><td class="num" id="est-rate">—</td></tr>
+          <tr><td>Units</td><td class="num" id="est-units">—</td></tr>
+          <tr><td>Days</td><td class="num" id="est-days">—</td></tr>
+          <tr class="sum"><td>Rent</td><td class="num" id="fee-estimate">—</td></tr>
+        </tbody>
+      </table>
+      <div class="panel-foot">Rent is owed once the request is approved. Payments are recorded on the reservation page.</div>
+    </section>
+
+    <% if (item.isNew) { %>
+    <section class="panel">
+      <div class="panel-head">
+        <h2 data-icon="route" data-tone="purple">What happens next</h2>
+      </div>
+      <ol class="steps">
+        <li class="now"><span class="mark">1</span><span>Pending<span class="what">Saved now. Units set aside for the dates.</span></span><span></span></li>
+        <li><span class="mark">2</span><span>Approved<span class="what">Confirm the booking. Rent becomes owed.</span></span><span></span></li>
+        <li><span class="mark">3</span><span>Released<span class="what">Borrower picks up on the pick-up date.</span></span><span></span></li>
+        <li><span class="mark">4</span><span>Returned<span class="what">Item back. Units free again.</span></span><span></span></li>
+      </ol>
+    </section>
+    <% } %>
+  </div>
+</div>
+<% } %>
+<%- include('../partials/footer') %>

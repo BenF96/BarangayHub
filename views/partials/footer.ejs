@@ -1,0 +1,9 @@
+    </div>
+    <footer class="footer">BarangayHub · Barangay Rent and Reservation Management System</footer>
+  </main>
+  <% if (!/^\/reservations\/(new|[a-f0-9]{24}\/edit)$/.test(currentPath || '')) { %>
+    <a class="fab no-print" href="/reservations/new" aria-label="New reservation" title="New reservation"><%- include('icon', { name: 'add' }) %></a>
+  <% } %>
+  <script src="/js/app.js"></script>
+</body>
+</html>

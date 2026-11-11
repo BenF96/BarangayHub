@@ -1,0 +1,92 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/equipment">Equipment &amp; tools</a><%= item.isNew ? '' : ' / ' + item.name %></div>
+    <h1><%= item.isNew ? 'Add item' : 'Edit ' + item.name %></h1>
+    <p class="sub"><%= item.isNew ? 'Register an item the barangay lends out. It can be reserved as soon as it is saved.' : 'Changes apply right away. Existing bookings keep their rate and units.' %></p>
+  </div>
+</div>
+
+<div class="form-layout">
+  <form class="panel form" method="POST" action="<%= item.isNew ? '/equipment' : '/equipment/' + item._id + '?_method=PUT' %>">
+    <div class="panel-head">
+      <h2 data-icon="<%= item.isNew ? 'add_box' : 'edit' %>"><%= item.isNew ? 'Item details' : 'Edit details' %></h2>
+      <p class="panel-desc">Name, category and condition describe the item; units and rate decide how many can be lent and what each booking costs.</p>
+    </div>
+    <div class="panel-body">
+      <% if (error) { %><div class="notice notice-error"><%= error %></div><% } %>
+      <div class="form-section">Item</div>
+      <label>Name
+        <input type="text" name="name" required value="<%= item.name || '' %>" placeholder="Item name" />
+      </label>
+      <div class="grid2">
+        <label>Category
+          <select name="category">
+            <% CATEGORIES.forEach(c => { %>
+              <option value="<%= c %>" <%= item.category === c ? 'selected' : '' %>><%= c %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label>Condition
+          <select name="condition">
+            <% CONDITIONS.forEach(c => { %>
+              <option value="<%= c %>" <%= item.condition === c ? 'selected' : '' %>><%= c %></option>
+            <% }) %>
+          </select>
+          <span class="hint">"Needs Repair" shows a warning before release.</span>
+        </label>
+      </div>
+      <div class="form-section">Stock and rent</div>
+      <div class="grid2">
+        <label>Units owned
+          <input type="number" name="quantity" min="0" required value="<%= item.quantity ?? 1 %>" />
+          <span class="hint"><%= usage && usage.peak.units ? 'At least ' + usage.peak.units + ' (already booked on ' + usage.peak.date + ').' : 'How many the barangay has.' %></span>
+        </label>
+        <label>Rate per unit per day (₱)
+          <input type="number" name="rentalFee" min="0" step="0.01" value="<%= item.rentalFee ?? 0 %>" />
+          <span class="hint">0 if lent for free.<%= item.isNew ? '' : ' A new rate applies to new reservations only.' %></span>
+        </label>
+      </div>
+      <label>Notes
+        <textarea name="description" rows="3" placeholder="What's included, where it's stored"><%= item.description || '' %></textarea>
+      </label>
+    </div>
+    <div class="form-foot">
+      <button class="btn btn-primary" type="submit"><%- include('../partials/icon', { name: 'save' }) %> <%= item.isNew ? 'Add item' : 'Save changes' %></button>
+      <a href="<%= item.isNew ? '/equipment' : '/equipment/' + item._id %>">Cancel</a>
+    </div>
+  </form>
+
+  <div>
+    <% if (usage) { %>
+      <section class="panel">
+        <div class="panel-head">
+          <h2 data-icon="event_note" data-tone="info">Current bookings</h2>
+          <p class="panel-desc">What depends on this item right now.</p>
+        </div>
+        <table class="money">
+          <tbody>
+            <tr><td>Open bookings</td><td class="num"><%= usage.open %></td></tr>
+            <tr><td>Units in open bookings</td><td class="num"><%= usage.units %></td></tr>
+            <tr><td>Most booked on one day</td><td class="num"><%= usage.peak.units %><%= usage.peak.units ? ' (' + usage.peak.date + ')' : '' %></td></tr>
+            <tr><td>Keeping an older rate</td><td class="num"><%= usage.oldRate %></td></tr>
+            <tr class="sum"><td>All bookings ever</td><td class="num"><%= usage.total %></td></tr>
+          </tbody>
+        </table>
+        <div class="panel-foot">Units owned can't go below the most booked on one day. Changing the rate doesn't change open bookings.</div>
+      </section>
+    <% } %>
+    <section class="panel">
+      <div class="panel-head">
+        <h2 data-icon="info" data-tone="purple">What each field does</h2>
+      </div>
+      <dl class="kv" style="padding:0 20px 8px">
+        <dt>Units owned</dt><dd>Upper limit for bookings on any day. Pending, approved and released bookings all count.</dd>
+        <dt>Rate</dt><dd>Rent = rate × units × days. Fixed on each booking when it's made.</dd>
+        <dt>Condition</dt><dd>Shown on bookings and the release step.</dd>
+        <dt>Notes</dt><dd>Shown on the item page and on each booking.</dd>
+      </dl>
+    </section>
+  </div>
+</div>
+<%- include('../partials/footer') %>

@@ -1,0 +1,193 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="sub"><%= longDate(today) %>: today's work, what's coming, and where the rent stands.</p>
+  </div>
+  <div class="toolbar">
+    <a class="btn" href="/equipment/new">Add item</a>
+    <a class="btn btn-primary" href="/reservations/new">New reservation</a>
+  </div>
+</div>
+
+<div class="summary">
+  <a href="/equipment" data-icon="inventory_2">
+    <span class="n"><%= stats.availableUnits %> <span class="small muted">/ <%= stats.totalUnits %></span></span>
+    <span class="l">Units free today</span>
+    <span class="d"><%= stats.unitsOut %> booked or out today · <%= stats.equipmentCount %> item type<%= stats.equipmentCount === 1 ? '' : 's' %></span>
+  </a>
+  <a href="/reservations?status=Pending" data-icon="pending_actions" data-tone="warn">
+    <span class="n"><%= byStatus.Pending || 0 %></span>
+    <span class="l">Waiting for approval</span>
+    <span class="d"><%= detail.pendingUnits %> units held · <%= peso(detail.pendingExpected) %> expected<%= detail.oldestPending ? ' · earliest pick-up ' + fmtDate(detail.oldestPending) : '' %></span>
+  </a>
+  <a href="/reservations?status=Approved" data-icon="event_available" data-tone="info">
+    <span class="n"><%= byStatus.Approved || 0 %></span>
+    <span class="l">Approved, not picked up</span>
+    <span class="d"><%= detail.approvedUnits %> units · <%= detail.approvedToday %> ready today<%= detail.approvedUnpaid ? ' · ' + peso(detail.approvedUnpaid) + ' unpaid' : '' %></span>
+  </a>
+  <a href="/reservations?status=Released" data-icon="local_shipping" data-tone="purple">
+    <span class="n"><%= byStatus.Released || 0 %></span>
+    <span class="l">Out on loan</span>
+    <span class="d"><%= detail.releasedUnits %> units with borrowers · <%= detail.dueToday %> due back today</span>
+  </a>
+  <a href="/reservations?status=Overdue" class="<%= navCounts.overdue ? 'red' : '' %>" data-icon="assignment_late" data-tone="<%= navCounts.overdue ? 'bad' : '' %>">
+    <span class="n"><%= navCounts.overdue %></span>
+    <span class="l">Overdue</span>
+    <span class="d"><%= navCounts.overdue ? detail.overdueUnits + ' units late · longest ' + detail.maxLate + ' day' + (detail.maxLate > 1 ? 's' : '') : 'Everything is back on time' %></span>
+  </a>
+  <a href="/payments" data-icon="payments">
+    <span class="n"><%= peso(stats.collectedMonth) %></span>
+    <span class="l">Rent collected this month</span>
+    <span class="d"><%= detail.monthPayments %> payment<%= detail.monthPayments === 1 ? '' : 's' %><%= detail.monthRefunds ? ' · ' + detail.monthRefunds + ' refund' + (detail.monthRefunds > 1 ? 's' : '') + ' deducted' : '' %> · net of refunds</span>
+  </a>
+  <a href="/payments#owing" class="<%= stats.owingCount ? 'red' : '' %>" data-icon="request_quote" data-tone="<%= stats.owingCount ? 'bad' : '' %>">
+    <span class="n"><%= peso(stats.owing) %></span>
+    <span class="l">Unpaid rent</span>
+    <span class="d"><%= stats.owingCount %> <%= stats.owingCount === 1 ? 'booking owes' : 'bookings owe' %> rent (approved and later)</span>
+  </a>
+</div>
+
+<div class="cols">
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="outbox" data-tone="info">For release today</h2>
+      <span class="small muted"><%= toRelease.length %></span>
+      <p class="panel-desc">Approved bookings whose pick-up date has come. Collect any unpaid rent, then click Release when the borrower arrives.</p>
+    </div>
+    <% if (!toRelease.length) { %><p class="empty">Nothing to release today.</p><% } else { %>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Borrower</th><th>Item</th><th>Rent</th><th></th></tr></thead>
+        <tbody>
+          <% toRelease.forEach(r => { %>
+            <tr>
+              <td><a href="/reservations/<%= r._id %>"><%= r.borrowerName %></a><br /><span class="small muted"><%= r.address %> · <%= r.contactNumber %></span></td>
+              <td><%= r.quantity %> × <%= r.equipment ? r.equipment.name : '(deleted)' %><br /><span class="small muted">until <%= fmtDate(r.endDate) %></span></td>
+              <td class="nowrap"><span class="pay pay-<%= r.paymentStatus.toLowerCase().replace(' ', '-') %>"><%= r.balance > 0 ? peso(r.balance) + ' unpaid' : r.paymentStatus.toLowerCase() %></span></td>
+              <td class="row-actions">
+                <form method="POST" action="/reservations/<%= r._id %>/status?_method=PATCH" <% if (r.balance > 0) { %>data-confirm="Rent is not fully paid (<%= peso(r.balance) %> left). Release anyway?"<% } %>>
+                  <input type="hidden" name="status" value="Released" />
+                  <button class="btn btn-sm" type="submit">Release</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="assignment_return" data-tone="purple">For return</h2>
+      <span class="small muted"><%= toReturn.length %></span>
+      <p class="panel-desc">Items out on loan that are due back today or are already late. Click Returned when the item is back.</p>
+    </div>
+    <% if (!toReturn.length) { %><p class="empty">No returns due.</p><% } else { %>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Borrower</th><th>Item</th><th>Due · rent</th><th></th></tr></thead>
+        <tbody>
+          <% toReturn.forEach(r => { const late = Math.round((today - r.endDate) / 86400000); %>
+            <tr>
+              <td><a href="/reservations/<%= r._id %>"><%= r.borrowerName %></a><br /><span class="small muted"><%= r.contactNumber %></span></td>
+              <td><%= r.quantity %> × <%= r.equipment ? r.equipment.name : '(deleted)' %></td>
+              <td class="nowrap"><%= fmtDate(r.endDate) %> <% if (late > 0) { %><span class="late"><%= late %>d late</span><% } else { %><span class="small amber">today</span><% } %><br />
+                <span class="pay pay-<%= r.paymentStatus.toLowerCase().replace(' ', '-') %>" style="margin-top:4px"><%= r.balance > 0 ? peso(r.balance) + ' unpaid' : r.paymentStatus.toLowerCase() %></span></td>
+              <td class="row-actions">
+                <form method="POST" action="/reservations/<%= r._id %>/status?_method=PATCH">
+                  <input type="hidden" name="status" value="Returned" />
+                  <button class="btn btn-sm" type="submit">Returned</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 data-icon="date_range">Next 7 days</h2>
+    <a href="/reservations">All reservations</a>
+    <p class="panel-desc">Upcoming pick-ups. Pending ones still need a decision; approved ones should have their rent collected before pick-up.</p>
+  </div>
+  <% if (!upcoming.length) { %><p class="empty">No pick-ups in the next 7 days.</p><% } else { %>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Pick-up</th><th>Return</th><th>Borrower</th><th>Item</th><th>Status</th><th>Rent</th><th>Next</th></tr></thead>
+      <tbody>
+        <% upcoming.forEach(r => { const n = r.nextAction; %>
+          <tr>
+            <td class="nowrap"><%= fmtDate(r.startDate) %><br /><span class="small muted"><%= new Date(r.startDate).toLocaleDateString("en-PH", { timeZone: "UTC", weekday: "long" }) %></span></td>
+            <td class="nowrap"><%= fmtDate(r.endDate) %></td>
+            <td><a href="/reservations/<%= r._id %>"><%= r.borrowerName %></a></td>
+            <td><%= r.quantity %> × <%= r.equipment ? r.equipment.name : '(deleted)' %></td>
+            <td><%- include('partials/status', { s: r.status }) %></td>
+            <td class="nowrap small"><%= r.totalFee ? peso(r.totalFee) : 'free' %><% if (r.totalFee) { %><br /><span class="pay pay-<%= r.paymentStatus.toLowerCase().replace(' ', '-') %>"><%= r.paymentStatus.toLowerCase() %></span><% } %></td>
+            <td class="small <%= n.tone === 'bad' ? 'red' : n.tone === 'warn' ? 'amber' : 'muted' %>"><%= n.text %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table></div>
+  <% } %>
+</section>
+
+<div class="cols">
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="category">Stock today, by category</h2>
+      <a href="/equipment">Inventory</a>
+      <p class="panel-desc">Units owned, units booked or out today, and units still free to lend today.</p>
+    </div>
+    <% const cats = Object.entries(categories); %>
+    <% if (!cats.length) { %><p class="empty">No items yet.</p><% } else { %>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Category</th><th class="num">Items</th><th class="num">Units</th><th class="num">In use</th><th class="num">Free</th></tr></thead>
+        <tbody>
+          <% cats.forEach(([name, c]) => { const pct = c.total ? Math.round(c.used / c.total * 100) : 0; %>
+            <tr>
+              <td><a href="/equipment?category=<%= encodeURIComponent(name) %>"><%= name %></a>
+                <div class="meter <%= pct >= 100 ? 'out' : pct >= 70 ? 'low' : '' %>" title="<%= pct %>% in use"><i style="width: <%= pct %>%"></i></div>
+                <span class="small muted"><%= pct %>% in use</span></td>
+              <td class="num"><%= c.items %></td>
+              <td class="num"><%= c.total %></td>
+              <td class="num"><%= c.used %></td>
+              <td class="num <%= c.total - c.used === 0 ? 'red strong' : '' %>"><%= c.total - c.used %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+        <tfoot><tr><td>All</td><td class="num"><%= stats.equipmentCount %></td><td class="num"><%= stats.totalUnits %></td><td class="num"><%= stats.unitsOut %></td><td class="num"><%= stats.availableUnits %></td></tr></tfoot>
+      </table></div>
+    <% } %>
+    <% if (needsRepair.length || fullyBooked.length) { %>
+      <div class="panel-foot">
+        <% if (needsRepair.length) { %><p style="margin:0 0 4px"><span class="red strong">Needs repair:</span> <% needsRepair.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="/equipment/<%= e._id %>"><%= e.name %></a><% }) %></p><% } %>
+        <% if (fullyBooked.length) { %><p style="margin:0"><span class="strong">None left today:</span> <% fullyBooked.forEach((e, i) => { %><%= i ? ', ' : '' %><a href="/equipment/<%= e._id %>"><%= e.name %></a><% }) %></p><% } %>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="history" data-tone="info">Recently updated</h2>
+      <p class="panel-desc">The latest reservations that were created, moved to a new step, edited or paid.</p>
+    </div>
+    <% if (!recent.length) { %><p class="empty">No reservations yet.</p><% } else { %>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Ref.</th><th>Borrower</th><th>Status</th><th>Last change</th></tr></thead>
+        <tbody>
+          <% recent.forEach(r => { const last = r.statusHistory[r.statusHistory.length - 1]; %>
+            <tr>
+              <td class="nowrap"><a href="/reservations/<%= r._id %>"><%= r.refNo %></a></td>
+              <td><%= r.borrowerName %><br /><span class="small muted"><%= r.quantity %> × <%= r.equipment ? r.equipment.name : '(deleted)' %></span></td>
+              <td><%- include('partials/status', { s: r.status, r }) %><br /><span class="pay pay-<%= r.paymentStatus.toLowerCase().replace(' ', '-') %>"><%= r.paymentStatus.toLowerCase() %></span></td>
+              <td class="small"><%= last && last.note ? last.note : (last ? 'Marked ' + last.status : '') %><br /><span class="muted"><%= dateTime(r.updatedAt) %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    <% } %>
+  </section>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,147 @@
+<%- include('../partials/header') %>
+<% const availToday = Math.max(0, item.quantity - stats.reservedToday);
+   const bookedToday = Math.min(item.quantity, stats.reservedToday); %>
+<div class="page-head">
+  <div>
+    <div class="crumbs"><a href="/equipment">Equipment &amp; tools</a> / <%= item.category %></div>
+    <h1><%= item.name %></h1>
+    <p class="sub"><%= item.quantity %> units · <%= item.rentalFee > 0 ? peso(item.rentalFee) + ' per unit per day' : 'lent for free' %> · condition: <span class="cond-<%= item.condition.toLowerCase().replace(' ', '-') %>"><%= item.condition.toLowerCase() %></span></p>
+  </div>
+  <div class="toolbar">
+    <a class="btn btn-primary" href="/reservations/new?equipment=<%= item._id %>">Reserve</a>
+    <a class="btn" href="/equipment/<%= item._id %>/edit">Edit</a>
+    <form method="POST" action="/equipment/<%= item._id %>?_method=DELETE" data-confirm="Delete this item? Old reservations without payments are deleted too.">
+      <button class="btn btn-danger" type="submit">Delete</button>
+    </form>
+  </div>
+</div>
+
+<% if (item.condition === 'Needs Repair') { %>
+  <div class="notice notice-warn">Marked as needing repair. Inspect before lending.</div>
+<% } %>
+<% if (stats.overdue) { %>
+  <div class="notice notice-error"><%= stats.overdue %> borrower<%= stats.overdue > 1 ? 's have' : ' has' %> not returned this item on time. See Reservations below.</div>
+<% } %>
+
+<div class="cards">
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="inventory">Stock</h2>
+      <p class="panel-desc">How many units the barangay owns and where they are today.</p>
+    </div>
+    <table class="money">
+      <tbody>
+        <tr><td>Units owned</td><td class="num"><%= item.quantity %></td></tr>
+        <tr><td>Out with borrowers now</td><td class="num"><%= stats.outNow %></td></tr>
+        <tr><td>Booked for today (incl. out)</td><td class="num"><%= bookedToday %></td></tr>
+        <tr class="sum"><td>Free to lend today</td><td class="num <%= availToday ? '' : 'red' %>"><%= availToday %></td></tr>
+        <tr><td>Upcoming bookings</td><td class="num"><%= stats.upcoming.length %></td></tr>
+      </tbody>
+    </table>
+    <div class="panel-foot">Units are set aside from the moment a request is made (Pending), not only when approved.</div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="payments">Rent from this item</h2>
+      <p class="panel-desc">Rent across all of this item's bookings. Pending requests are expected, not owed.</p>
+    </div>
+    <table class="money">
+      <tbody>
+        <tr><td>Rate now</td><td class="num"><%= item.rentalFee > 0 ? peso(item.rentalFee) + ' / unit / day' : 'Free' %></td></tr>
+        <% if (stats.oldRate) { %><tr class="hint-row"><td colspan="2"><%= stats.oldRate %> open booking<%= stats.oldRate > 1 ? 's keep their' : ' keeps its' %> earlier rate.</td></tr><% } %>
+        <tr><td>Rent owed (approved and after)</td><td class="num"><%= peso(stats.owedTotal) %></td></tr>
+        <tr><td>Collected (less refunds)</td><td class="num"><%= peso(stats.revenue) %></td></tr>
+        <tr class="sum"><td>Still unpaid</td><td class="num <%= stats.unpaid ? 'red' : '' %>"><%= peso(stats.unpaid) %></td></tr>
+        <tr><td>Expected from pending</td><td class="num"><%= peso(stats.expected) %></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="bar_chart" data-tone="info">Usage</h2>
+      <p class="panel-desc">How often this item is borrowed, by reservation status.</p>
+    </div>
+    <table class="money">
+      <tbody>
+        <tr><td>Waiting for approval</td><td class="num"><%= stats.pending %></td></tr>
+        <tr><td>Approved, not picked up</td><td class="num"><%= stats.approved %></td></tr>
+        <tr><td>Out on loan</td><td class="num"><%= stats.released %><%= stats.overdue ? ' (' + stats.overdue + ' late)' : '' %></td></tr>
+        <tr><td>Returned</td><td class="num"><%= stats.returned %></td></tr>
+        <tr><td>Cancelled / rejected</td><td class="num"><%= stats.closed %></td></tr>
+        <tr class="sum"><td>Unit-days lent</td><td class="num"><%= stats.unitDays %></td></tr>
+      </tbody>
+    </table>
+    <div class="panel-foot">Unit-days = units × days for every released or returned booking.</div>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 data-icon="calendar_month">Units free, next 14 days</h2>
+    <p class="panel-desc">Free units per day after pending, approved and released bookings. Yellow: partly booked. Red: none left. Hover a day to see the numbers.</p>
+  </div>
+  <div class="panel-body">
+    <div class="days">
+      <% calendar.forEach((c, i) => { const cls = c.available === 0 ? 'full' : c.used > 0 ? 'part' : ''; %>
+        <div class="day <%= cls %> <%= i === 0 ? 'today' : '' %>" title="<%= c.used %> booked, <%= c.available %> free">
+          <%= new Date(c.date).toLocaleDateString('en-PH', { timeZone: 'UTC', weekday: 'short' }) %><br />
+          <%= new Date(c.date).toLocaleDateString('en-PH', { timeZone: 'UTC', month: 'short', day: 'numeric' }) %>
+          <b><%= c.available %></b>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+</section>
+
+<div class="cols-wide">
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="event_note" data-tone="info">Reservations</h2>
+      <span class="small muted"><%= reservations.length %> in all</span>
+      <p class="panel-desc">Every booking of this item, newest pick-up first, with its rent and what to do next.</p>
+    </div>
+    <% if (reservations.length === 0) { %>
+      <p class="empty">This item hasn't been reserved yet.</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Ref.</th><th>Borrower</th><th>Dates</th><th class="num">Units</th><th>Status</th><th>Rent</th><th>Next</th></tr></thead>
+          <tbody>
+            <% reservations.forEach(r => { const n = r.nextAction; %>
+              <tr>
+                <td class="nowrap"><a href="/reservations/<%= r._id %>"><%= r.refNo %></a></td>
+                <td><%= r.borrowerName %><br /><span class="small muted"><%= r.purpose || r.address %></span></td>
+                <td class="nowrap"><%= fmtDate(r.startDate) %> – <%= fmtDate(r.endDate) %><br /><span class="small muted"><%= r.days %> day<%= r.days > 1 ? 's' : '' %></span></td>
+                <td class="num"><%= r.quantity %></td>
+                <td><%- include('../partials/status', { s: r.status, r }) %></td>
+                <td class="small nowrap"><%= peso(r.rentDue) %><br /><span class="pay pay-<%= r.paymentStatus.toLowerCase().replace(' ', '-') %>"><%= r.balance > 0 ? peso(r.balance) + ' left' : r.paymentStatus.toLowerCase() %></span></td>
+                <td class="small <%= n.tone === 'bad' ? 'red' : n.tone === 'warn' ? 'amber' : 'muted' %>"><%= n.text %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 data-icon="description" data-tone="purple">Record</h2>
+      <p class="panel-desc">Inventory details for this item.</p>
+    </div>
+    <div class="panel-body">
+      <dl class="kv">
+        <dt>Category</dt><dd><%= item.category %></dd>
+        <dt>Condition</dt><dd class="cond-<%= item.condition.toLowerCase().replace(' ', '-') %>"><%= item.condition %></dd>
+        <dt>Units owned</dt><dd><%= item.quantity %></dd>
+        <dt>Rate</dt><dd><%= item.rentalFee > 0 ? peso(item.rentalFee) + ' / unit / day' : 'Free' %></dd>
+        <dt>Notes</dt><dd><%= item.description || '—' %></dd>
+        <dt>Added</dt><dd><%= dateTime(item.createdAt) %></dd>
+        <dt>Last edited</dt><dd><%= dateTime(item.updatedAt) %></dd>
+      </dl>
+    </div>
+  </section>
+</div>
+<%- include('../partials/footer') %>

@@ -1,0 +1,1 @@
+<% const lateBy = (typeof r !== 'undefined' && r && r.status === 'Released' && typeof today !== 'undefined' && r.endDate < today) ? Math.round((today - r.endDate) / 86400000) : 0; %><span class="status status-<%= s.toLowerCase() %>"><%= s %></span><% if (lateBy) { %> <span class="late"><%= lateBy %>d late</span><% } %>

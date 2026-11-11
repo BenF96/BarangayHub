@@ -1,0 +1,156 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Rent &amp; payments</h1>
+    <p class="sub">Money received and refunded from <%= longDate(from) %> to <%= longDate(to) %>, plus all rent still owed, expected or to be refunded.</p>
+  </div>
+  <button class="btn no-print" type="button" data-print>Print</button>
+</div>
+
+<form class="filters no-print" method="GET" action="/payments">
+  <label>From <input type="date" name="from" value="<%= fmtDate(from) %>" /></label>
+  <label>To <input type="date" name="to" value="<%= fmtDate(to) %>" /></label>
+  <span style="display:flex; gap:8px; flex-wrap:wrap">
+    <button class="btn btn-primary" type="submit"><%- include('../partials/icon', { name: 'filter_alt' }) %> Show</button>
+    <a class="btn" href="/payments?from=<%= fmtDate(today) %>&to=<%= fmtDate(today) %>">Today</a>
+    <a class="btn" href="/payments">This month</a>
+  </span>
+</form>
+
+<div class="summary">
+  <% const payCount = entries.filter(e => !e.isRefund).length, refCount = entries.filter(e => e.isRefund).length;
+     const days = Math.round((to - from) / 86400000) + 1; %>
+  <div data-icon="account_balance_wallet">
+    <span class="n"><%= peso(received - refunded) %></span>
+    <span class="l">Net collected</span>
+    <span class="d"><%= days %> day<%= days > 1 ? 's' : '' %> · <%= payCount ? 'avg ' + peso((received) / payCount) + ' per payment' : 'no payments' %></span>
+  </div>
+  <div data-icon="south_west" data-tone="info">
+    <span class="n"><%= peso(received) %></span>
+    <span class="l">Received</span>
+    <span class="d"><%= payCount %> payment<%= payCount === 1 ? '' : 's' %> in this period</span>
+  </div>
+  <div data-icon="north_east" data-tone="purple">
+    <span class="n"><%= peso(refunded) %></span>
+    <span class="l">Refunded</span>
+    <span class="d"><%= refCount %> refund<%= refCount === 1 ? '' : 's' %> given back</span>
+  </div>
+  <a href="#owing" class="<%= owing.length ? 'red' : '' %>" data-icon="request_quote" data-tone="<%= owing.length ? 'bad' : '' %>">
+    <span class="n"><%= peso(owingTotal) %></span>
+    <span class="l">Unpaid rent</span>
+    <span class="d"><%= owing.length %> <%= owing.length === 1 ? 'booking owes' : 'bookings owe' %> rent, any date<%= owing.length ? ' · ' + owing.filter(r => r.status === 'Returned').length + ' already returned' : '' %></span>
+  </a>
+  <a href="#expected" data-icon="hourglass_top" data-tone="warn">
+    <span class="n"><%= peso(expectedTotal) %></span>
+    <span class="l">Expected</span>
+    <span class="d"><%= expected.length %> pending request<%= expected.length === 1 ? '' : 's' %>, owed once approved</span>
+  </a>
+  <a href="#refunds" class="<%= refunds.length ? 'red' : '' %>" data-icon="currency_exchange" data-tone="<%= refunds.length ? 'bad' : 'info' %>">
+    <span class="n"><%= peso(refundTotal) %></span>
+    <span class="l">To refund</span>
+    <span class="d"><%= refunds.length ? refunds.length + ' borrower' + (refunds.length > 1 ? 's' : '') + ' to pay back' : 'Nothing to give back' %></span>
+  </a>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 data-icon="account_balance_wallet">Collections</h2>
+    <span class="small muted"><%= entries.length %> entr<%= entries.length === 1 ? 'y' : 'ies' %></span>
+    <p class="panel-desc">Every payment received and refund given between the dates above, newest first. Refunds are shown in red and subtracted from the total.</p>
+  </div>
+  <% if (!entries.length) { %>
+    <p class="empty">No payments received in this period.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>OR no.</th><th>Reservation</th><th>Borrower</th><th>Item</th><th>Handled by</th><th class="num">Amount</th><th>Balance now</th></tr></thead>
+        <tbody>
+          <% entries.forEach(p => { %>
+            <tr>
+              <td class="nowrap"><%= fmtDate(p.payment.paidAt) %></td>
+              <td><%= p.isRefund ? 'refund' : (p.payment.orNumber || '—') %></td>
+              <td class="nowrap"><a href="/reservations/<%= p.reservationId %>#payments"><%= p.refNo %></a></td>
+              <td><%= p.borrowerName %><% if (p.payment.note) { %><br /><span class="small muted"><%= p.payment.note %></span><% } %></td>
+              <td><%= p.quantity %> × <%= p.equipmentName %></td>
+              <td><%= p.payment.receivedBy || '—' %></td>
+              <td class="num <%= p.isRefund ? 'red' : '' %>"><%= p.isRefund ? '−' : '' %><%= peso(p.payment.amount) %></td>
+              <td class="small nowrap"><% const b = balances[String(p.reservationId)]; if (b) { %><span class="pay pay-<%= b.status.toLowerCase().replace(' ', '-') %>"><%= b.balance > 0 ? peso(b.balance) + ' left' : b.balance < 0 ? peso(-b.balance) + ' to refund' : b.status.toLowerCase() %></span><% } %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+        <tfoot><tr><td colspan="6">Net collected (<%= peso(received) %> received − <%= peso(refunded) %> refunded)</td><td class="num"><%= peso(received - refunded) %></td><td></td></tr></tfoot>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%
+  const owedTable = (list, total, label) => { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ref.</th><th>Borrower</th><th>Item</th><th>Dates</th><th>Status</th><th class="num">Rent</th><th class="num">Paid</th><th class="num">Balance</th></tr></thead>
+        <tbody>
+          <% list.forEach(r => { %>
+            <tr>
+              <td class="nowrap"><a href="/reservations/<%= r._id %>#payments"><%= r.refNo %></a></td>
+              <td><%= r.borrowerName %><br /><span class="small muted"><%= r.contactNumber %></span></td>
+              <td><%= r.quantity %> × <%= r.equipment ? r.equipment.name : '(deleted)' %></td>
+              <td class="nowrap"><%= fmtDate(r.startDate) %> – <%= fmtDate(r.endDate) %></td>
+              <td><%- include('../partials/status', { s: r.status, r }) %></td>
+              <td class="num"><%= peso(r.rentDue) %></td>
+              <td class="num"><%= peso(r.netPaid) %></td>
+              <td class="num strong"><%= peso(r.balance) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+        <tfoot><tr><td colspan="7"><%= label %></td><td class="num"><%= peso(total) %></td></tr></tfoot>
+      </table>
+    </div>
+<% } %>
+
+<section class="panel" id="owing">
+  <div class="panel-head">
+    <h2 data-icon="request_quote" data-tone="bad">Unpaid rent</h2>
+    <span class="small muted"><%= owing.length %></span>
+    <p class="panel-desc">Approved, released or returned bookings that still owe rent, any date. These are real debts: the borrower has been told yes. Open one to record a payment.</p>
+  </div>
+  <% if (!owing.length) { %><p class="empty">Nothing unpaid.</p><% } else { owedTable(owing, owingTotal, 'Total unpaid'); } %>
+</section>
+
+<section class="panel" id="expected">
+  <div class="panel-head">
+    <h2 data-icon="hourglass_top" data-tone="warn">Expected rent</h2>
+    <span class="small muted"><%= expected.length %></span>
+    <p class="panel-desc">Requests still waiting for approval. This rent is not owed yet; it moves to Unpaid rent when approved, and drops off if rejected or cancelled.</p>
+  </div>
+  <% if (!expected.length) { %><p class="empty">No pending requests with rent.</p><% } else { owedTable(expected, expectedTotal, 'Total expected'); } %>
+</section>
+
+<% if (refunds.length) { %>
+<section class="panel" id="refunds">
+  <div class="panel-head">
+    <h2 data-icon="currency_exchange" data-tone="info">To refund</h2>
+    <span class="small muted"><%= refunds.length %></span>
+    <p class="panel-desc">Money the barangay must give back: the booking was cancelled or rejected after paying, or edited to a lower rent. Open one to record the refund.</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Ref.</th><th>Borrower</th><th>Status</th><th class="num">Rent owed</th><th class="num">Paid</th><th class="num">Refund</th></tr></thead>
+      <tbody>
+        <% refunds.forEach(r => { %>
+          <tr>
+            <td><a href="/reservations/<%= r._id %>#payments"><%= r.refNo %></a></td>
+            <td><%= r.borrowerName %><br /><span class="small muted"><%= r.contactNumber %></span></td>
+            <td><%- include('../partials/status', { s: r.status }) %></td>
+            <td class="num"><%= peso(r.rentDue) %></td>
+            <td class="num"><%= peso(r.netPaid) %></td>
+            <td class="num strong"><%= peso(r.refundDue) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+      <tfoot><tr><td colspan="5">Total to refund</td><td class="num"><%= peso(refundTotal) %></td></tr></tfoot>
+    </table>
+  </div>
+</section>
+<% } %>
+<%- include('../partials/footer') %>

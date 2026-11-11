@@ -1,0 +1,72 @@
+<%
+  const url = currentUrl || '/';
+  const base = url.split('?')[0];
+  const is = (href) => {
+    if (href === '/') return base === '/';
+    if (href.includes('?')) return url.startsWith(href);
+    if (href.endsWith('/new')) return base === href;
+    return (base === href || (base.startsWith(href + '/') && !base.endsWith('/new'))) && !/[?&]status=/.test(url);
+  };
+  const nav = [
+    { href: '/', label: 'Dashboard', icon: 'dashboard' },
+    { section: 'Inventory' },
+    { href: '/equipment', label: 'Equipment & tools', icon: 'box' },
+    { href: '/equipment/new', label: 'Add item', icon: 'plus' },
+    { section: 'Borrowing' },
+    { href: '/reservations', label: 'All reservations', icon: 'list' },
+    { href: '/reservations/new', label: 'New reservation', icon: 'calendar' },
+    { href: '/reservations?status=Pending', label: 'For approval', icon: 'clock', count: navCounts.pending },
+    { href: '/reservations?status=Released', label: 'Out on loan', icon: 'truck', count: navCounts.released },
+    { href: '/reservations?status=Overdue', label: 'Overdue', icon: 'alert', count: navCounts.overdue, alert: true },
+    { href: '/reservations?status=Returned', label: 'Returned', icon: 'check' },
+    { section: 'Rent' },
+    { href: '/payments', label: 'Rent & payments', icon: 'peso' },
+  ];
+%><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= title %> – BarangayHub</title>
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <script nonce="<%= nonce %>">try { if (localStorage.getItem('sidebar-collapsed') === '1') document.body.classList.add('sidebar-collapsed'); } catch (e) {}</script>
+
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a href="/" class="sidebar-brand">
+      <img src="/img/logo.svg" alt="Barangay seal" />
+      <span class="brand-text">
+        <strong>BarangayHub</strong>
+        <span>Rent &amp; Reservation Management</span>
+      </span>
+    </a>
+    <nav>
+      <% nav.forEach(n => { if (n.section) { %>
+        <div class="nav-section"><%= n.section %></div>
+      <% } else { %>
+        <a href="<%= n.href %>" class="nav-link <%= is(n.href) ? 'active' : '' %>" title="<%= n.label %>">
+          <%- include('icon', { name: n.icon }) %>
+          <span class="label"><%= n.label %></span>
+          <% if (n.count) { %><span class="nav-count <%= n.alert ? 'alert' : '' %>"><%= n.count %></span><% } %>
+        </a>
+      <% } }) %>
+    </nav>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+  <header class="topbar">
+    <button class="hamburger" id="menu-toggle" type="button" aria-label="Menu" aria-controls="sidebar" aria-expanded="true"><span></span></button>
+    <a href="/" class="topbar-logo"><img src="/img/logo.svg" alt="" /> BarangayHub</a>
+    <span class="topbar-title">BarangayHub · Rent and Reservation Management System</span>
+    <div class="topbar-actions">
+      <span class="topbar-date"><%= todayLabel %></span>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="content">
+    <% if (msg) { %>
+      <div class="notice notice-<%= msgType === 'error' ? 'error' : 'ok' %>"><%= msg %></div>
+    <% } %>
