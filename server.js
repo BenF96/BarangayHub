@@ -46,6 +46,8 @@ app.use(
       },
     },
     hsts: config.https ? undefined : false,
+    // Send the page address only to this same site, so the form check below can see where a form came from
+    referrerPolicy: { policy: 'same-origin' },
   })
 );
 
